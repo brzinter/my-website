@@ -1,0 +1,32 @@
+{
+  "name": "personal-dashboard",
+  "version": "1.0.0",
+  "description": "A modern, responsive personal dashboard with real-time information",
+  "main": "src/index.html",
+  "scripts": {
+    "dev": "cd src && python3 -m http.server 8000",
+    "start": "npm run dev",
+    "build": "node scripts/build.js",
+    "serve:dist": "cd dist && python3 -m http.server 8000",
+    "clean": "rm -rf dist coverage",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "prebuild": "npm run clean"
+  },
+  "keywords": [
+    "dashboard",
+    "weather",
+    "stock",
+    "news"
+  ],
+  "author": "Jason Wang",
+  "license": "ISC",
+  "devDependencies": {
+    "@babel/core": "^7.23.0",
+    "@babel/preset-env": "^7.23.0",
+    "babel-jest": "^29.7.0",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0"
+  }
+}

@@ -229,19 +229,56 @@ async function getStockData() {
 // Get top news headlines
 async function getNews() {
     try {
-        // Using CORS proxy to fetch RSS feed and parse it
         const rssUrl = 'https://feeds.bbci.co.uk/news/rss.xml';
-        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(rssUrl)}`;
 
-        const response = await fetch(proxyUrl);
+        // Try multiple proxy services as fallbacks
+        const proxies = [
+            `https://api.allorigins.win/get?url=${encodeURIComponent(rssUrl)}`,
+            `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(rssUrl)}`
+        ];
 
-        if (!response.ok) throw new Error('News data unavailable');
+        let xmlContent = null;
+        let lastError = null;
 
-        const data = await response.json();
+        // Try each proxy in order
+        for (const proxyUrl of proxies) {
+            try {
+                const response = await fetch(proxyUrl, {
+                    method: 'GET',
+                    signal: AbortSignal.timeout(8000) // 8 second timeout
+                });
+
+                if (!response.ok) {
+                    lastError = new Error(`HTTP ${response.status}`);
+                    continue;
+                }
+
+                const data = await response.json();
+
+                // Extract XML content based on proxy response format
+                if (data.contents) {
+                    xmlContent = data.contents; // allorigins format
+                } else if (typeof data === 'string') {
+                    xmlContent = data; // codetabs format
+                }
+
+                if (xmlContent) {
+                    break; // Success! Exit the loop
+                }
+            } catch (error) {
+                lastError = error;
+                console.log(`Proxy failed: ${proxyUrl}`, error.message);
+                continue; // Try next proxy
+            }
+        }
+
+        if (!xmlContent) {
+            throw lastError || new Error('All proxies failed');
+        }
 
         // Parse the RSS XML
         const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(data.contents, 'text/xml');
+        const xmlDoc = parser.parseFromString(xmlContent, 'text/xml');
 
         // Get the first 3 items
         const items = xmlDoc.querySelectorAll('item');
@@ -276,8 +313,9 @@ async function getNews() {
             </div>
         `;
     } catch (error) {
+        console.error('News data error:', error);
         document.getElementById('news-content').innerHTML =
-            `<div class="error">Unable to fetch news: ${error.message}</div>`;
+            `<div class="error">Unable to fetch news. The service may be temporarily unavailable or rate limited. Try refreshing in a few minutes.</div>`;
     }
 }
 
