@@ -4,9 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Welcome</title>
-    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/styles.css?v=7.0">
 </head>
 <body>
+    <button id="ai-agent-btn" class="ai-agent-button" title="Invoke AI Agent">
+        <span class="ai-icon">🤖</span>
+        <span class="ai-text">AI Agent</span>
+    </button>
+
     <div class="container">
         <h1 id="greeting">Hello Jason</h1>
         <div class="time" id="time">00:00:00</div>
@@ -36,6 +41,35 @@
         </div>
     </div>
 
-    <script src="js/main.js"></script>
+    <!-- MCP Tools Modal -->
+    <div id="mcp-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>MCP Tools</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="mcp-tools-list" class="tools-list">
+                    <div class="loading">Loading tools...</div>
+                </div>
+                <div id="mcp-tool-form" class="tool-form" style="display: none;">
+                    <h3 id="tool-name"></h3>
+                    <p id="tool-description"></p>
+                    <div id="tool-inputs"></div>
+                    <div class="form-actions">
+                        <button id="execute-tool-btn" class="btn btn-primary">Execute Tool</button>
+                        <button id="back-to-list-btn" class="btn btn-secondary">Back to List</button>
+                    </div>
+                </div>
+                <div id="mcp-result" class="result-container" style="display: none;">
+                    <h3>Result</h3>
+                    <div id="result-content"></div>
+                    <button id="back-to-list-from-result-btn" class="btn btn-secondary">Back to List</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/main.js?v=5.0"></script>
 </body>
 </html>

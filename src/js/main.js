@@ -228,95 +228,96 @@ async function getStockData() {
 
 // Get top news headlines
 async function getNews() {
-    try {
-        const rssUrl = 'https://feeds.bbci.co.uk/news/rss.xml';
-
-        // Try multiple proxy services as fallbacks
-        const proxies = [
-            `https://api.allorigins.win/get?url=${encodeURIComponent(rssUrl)}`,
-            `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(rssUrl)}`
-        ];
-
-        let xmlContent = null;
-        let lastError = null;
-
-        // Try each proxy in order
-        for (const proxyUrl of proxies) {
-            try {
-                const response = await fetch(proxyUrl, {
-                    method: 'GET',
-                    signal: AbortSignal.timeout(8000) // 8 second timeout
-                });
-
-                if (!response.ok) {
-                    lastError = new Error(`HTTP ${response.status}`);
-                    continue;
-                }
-
-                const data = await response.json();
-
-                // Extract XML content based on proxy response format
-                if (data.contents) {
-                    xmlContent = data.contents; // allorigins format
-                } else if (typeof data === 'string') {
-                    xmlContent = data; // codetabs format
-                }
-
-                if (xmlContent) {
-                    break; // Success! Exit the loop
-                }
-            } catch (error) {
-                lastError = error;
-                console.log(`Proxy failed: ${proxyUrl}`, error.message);
-                continue; // Try next proxy
-            }
+    // Try multiple RSS feeds using rss2json service
+    const newsSources = [
+        {
+            name: 'BBC News',
+            rssUrl: 'https://feeds.bbci.co.uk/news/rss.xml'
+        },
+        {
+            name: 'TechCrunch',
+            rssUrl: 'https://techcrunch.com/feed/'
+        },
+        {
+            name: 'Hacker News',
+            rssUrl: 'https://news.ycombinator.com/rss'
         }
+    ];
 
-        if (!xmlContent) {
-            throw lastError || new Error('All proxies failed');
-        }
+    for (const source of newsSources) {
+        try {
+            console.log(`Trying to fetch news from ${source.name}...`);
 
-        // Parse the RSS XML
-        const parser = new DOMParser();
-        const xmlDoc = parser.parseFromString(xmlContent, 'text/xml');
+            // Use rss2json service - free, no API key needed
+            const rss2jsonUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(source.rssUrl)}`;
 
-        // Get the first 3 items
-        const items = xmlDoc.querySelectorAll('item');
-
-        if (items.length === 0) {
-            throw new Error('No news articles found');
-        }
-
-        const newsHtml = Array.from(items).slice(0, 3).map(item => {
-            const title = item.querySelector('title').textContent;
-            const link = item.querySelector('link').textContent;
-            const pubDate = new Date(item.querySelector('pubDate').textContent);
-            const formattedDate = pubDate.toLocaleDateString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric'
+            const response = await fetch(rss2jsonUrl, {
+                method: 'GET',
+                signal: AbortSignal.timeout(8000)
             });
 
-            return `
-                <div class="news-item">
-                    <a href="${link}" target="_blank">
-                        <h3>${title}</h3>
-                        <div class="news-source">BBC News - ${formattedDate}</div>
-                    </a>
+            if (!response.ok) {
+                console.log(`RSS2JSON returned ${response.status} for ${source.name}`);
+                continue;
+            }
+
+            const data = await response.json();
+
+            if (data.status !== 'ok' || !data.items || data.items.length === 0) {
+                console.log(`No items in feed for ${source.name}`);
+                continue;
+            }
+
+            console.log(`Successfully fetched ${data.items.length} items from ${source.name}`);
+
+            // Get first 3 items
+            const newsHtml = data.items.slice(0, 3).map(item => {
+                const title = item.title || 'No title';
+                const link = item.link || '#';
+                let formattedDate = 'Recent';
+
+                if (item.pubDate) {
+                    try {
+                        const pubDate = new Date(item.pubDate);
+                        formattedDate = pubDate.toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric'
+                        });
+                    } catch (e) {
+                        console.log('Date parsing error:', e);
+                    }
+                }
+
+                return `
+                    <div class="news-item">
+                        <a href="${link}" target="_blank">
+                            <h3>${title}</h3>
+                            <div class="news-source">${source.name} - ${formattedDate}</div>
+                        </a>
+                    </div>
+                `;
+            }).join('');
+
+            document.getElementById('news-content').innerHTML = `
+                <div class="news-list">
+                    ${newsHtml}
                 </div>
             `;
-        }).join('');
 
-        document.getElementById('news-content').innerHTML = `
-            <div class="news-list">
-                ${newsHtml}
-            </div>
-        `;
-    } catch (error) {
-        console.error('News data error:', error);
-        document.getElementById('news-content').innerHTML =
-            `<div class="error">Unable to fetch news. The service may be temporarily unavailable or rate limited. Try refreshing in a few minutes.</div>`;
+            console.log(`Successfully displayed news from ${source.name}`);
+            return; // Success! Exit the function
+
+        } catch (error) {
+            console.error(`Error with ${source.name}:`, error);
+            continue; // Try next source
+        }
     }
+
+    // If we get here, all sources failed
+    console.error('All news sources failed');
+    document.getElementById('news-content').innerHTML =
+        `<div class="error">Unable to fetch news. Please check your internet connection or try again later.</div>`;
 }
 
 // Load stock and news data
@@ -328,3 +329,234 @@ setInterval(getStockData, 5 * 60 * 1000);
 
 // Refresh news every 15 minutes
 setInterval(getNews, 15 * 60 * 1000);
+
+// MCP Client Configuration
+const MCP_BACKEND_URL = 'http://localhost:3001';
+
+// MCP Modal Management
+let currentTools = [];
+let selectedTool = null;
+
+const modal = document.getElementById('mcp-modal');
+const closeBtn = document.querySelector('.close');
+const toolsList = document.getElementById('mcp-tools-list');
+const toolForm = document.getElementById('mcp-tool-form');
+const resultContainer = document.getElementById('mcp-result');
+
+// Open modal and load tools
+async function openMCPModal() {
+    modal.classList.add('show');
+    modal.style.display = 'flex';
+
+    // Reset views
+    toolsList.style.display = 'grid';
+    toolForm.style.display = 'none';
+    resultContainer.style.display = 'none';
+
+    try {
+        // Check backend health
+        const healthResponse = await fetch(`${MCP_BACKEND_URL}/api/health`);
+        if (!healthResponse.ok) {
+            throw new Error('MCP backend is not running. Start it with: npm run mcp');
+        }
+
+        // Load tools
+        const toolsResponse = await fetch(`${MCP_BACKEND_URL}/api/mcp/tools`);
+        const toolsData = await toolsResponse.json();
+
+        if (!toolsData.success) {
+            throw new Error(toolsData.error || 'Failed to fetch tools');
+        }
+
+        currentTools = toolsData.tools;
+        displayToolsList(currentTools);
+
+    } catch (error) {
+        console.error('MCP Client error:', error);
+        toolsList.innerHTML = `<div class="error">${error.message}</div>`;
+    }
+}
+
+// Display tools in grid
+function displayToolsList(tools) {
+    if (!tools || tools.length === 0) {
+        toolsList.innerHTML = '<div class="error">No tools available</div>';
+        return;
+    }
+
+    toolsList.innerHTML = tools.map(tool => `
+        <div class="tool-card" data-tool-name="${tool.name}">
+            <h4>${tool.title || tool.name}</h4>
+            <p>${truncateText(tool.description || 'No description', 80)}</p>
+        </div>
+    `).join('');
+
+    // Add click handlers to tool cards
+    document.querySelectorAll('.tool-card').forEach(card => {
+        card.addEventListener('click', () => {
+            const toolName = card.dataset.toolName;
+            const tool = currentTools.find(t => t.name === toolName);
+            if (tool) showToolForm(tool);
+        });
+    });
+}
+
+// Show form for selected tool
+function showToolForm(tool) {
+    selectedTool = tool;
+    toolsList.style.display = 'none';
+    toolForm.style.display = 'block';
+
+    document.getElementById('tool-name').textContent = tool.title || tool.name;
+    document.getElementById('tool-description').textContent = tool.description || '';
+
+    const inputsContainer = document.getElementById('tool-inputs');
+    const schema = tool.inputSchema;
+
+    if (!schema || !schema.properties || Object.keys(schema.properties).length === 0) {
+        inputsContainer.innerHTML = '<p>This tool requires no parameters.</p>';
+        return;
+    }
+
+    // Generate form inputs based on schema
+    inputsContainer.innerHTML = Object.entries(schema.properties).map(([key, prop]) => {
+        const required = schema.required && schema.required.includes(key);
+        const isArray = prop.type === 'array';
+
+        return `
+            <div class="form-group">
+                <label for="input-${key}">
+                    ${key} ${required ? '<span style="color: red;">*</span>' : ''}
+                </label>
+                ${isArray ?
+                    `<textarea id="input-${key}" placeholder="${prop.description || ''}" ${required ? 'required' : ''}></textarea>
+                    <small>Enter one value per line for array input</small>` :
+                    `<input type="text" id="input-${key}" placeholder="${prop.description || ''}" ${required ? 'required' : ''}>`
+                }
+                ${prop.description ? `<small>${prop.description}</small>` : ''}
+            </div>
+        `;
+    }).join('');
+}
+
+// Execute selected tool
+async function executeTool() {
+    if (!selectedTool) return;
+
+    const executeBtn = document.getElementById('execute-tool-btn');
+    executeBtn.disabled = true;
+    executeBtn.textContent = 'Executing...';
+
+    try {
+        const schema = selectedTool.inputSchema;
+        const toolArgs = {};
+
+        // Collect form values
+        if (schema && schema.properties) {
+            for (const [key, prop] of Object.entries(schema.properties)) {
+                const input = document.getElementById(`input-${key}`);
+                if (input && input.value) {
+                    if (prop.type === 'array') {
+                        // Split textarea by lines for array input
+                        toolArgs[key] = input.value.split('\n').filter(line => line.trim());
+                    } else if (prop.type === 'number') {
+                        toolArgs[key] = Number(input.value);
+                    } else if (prop.type === 'boolean') {
+                        toolArgs[key] = input.value === 'true';
+                    } else {
+                        toolArgs[key] = input.value;
+                    }
+                }
+            }
+        }
+
+        // Call the tool
+        const response = await fetch(`${MCP_BACKEND_URL}/api/mcp/call-tool`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                toolName: selectedTool.name,
+                arguments: toolArgs
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showResult(result.result);
+        } else {
+            showResult({ error: result.error }, true);
+        }
+
+    } catch (error) {
+        showResult({ error: error.message }, true);
+    } finally {
+        executeBtn.disabled = false;
+        executeBtn.textContent = 'Execute Tool';
+    }
+}
+
+// Display result
+function showResult(result, isError = false) {
+    toolForm.style.display = 'none';
+    resultContainer.style.display = 'block';
+
+    const resultContent = document.getElementById('result-content');
+
+    if (isError) {
+        resultContent.innerHTML = `<span style="color: #c0392b;">${JSON.stringify(result, null, 2)}</span>`;
+    } else {
+        // Format the result nicely
+        let displayText = '';
+
+        if (result.content && Array.isArray(result.content)) {
+            displayText = result.content.map(item => item.text || JSON.stringify(item, null, 2)).join('\n\n');
+        } else if (result.structuredContent && result.structuredContent.content) {
+            displayText = result.structuredContent.content;
+        } else {
+            displayText = JSON.stringify(result, null, 2);
+        }
+
+        resultContent.textContent = displayText;
+    }
+}
+
+// Helper function to truncate text
+function truncateText(text, maxLength) {
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength) + '...';
+}
+
+// Back to list handlers
+document.getElementById('back-to-list-btn').addEventListener('click', () => {
+    toolForm.style.display = 'none';
+    resultContainer.style.display = 'none';
+    toolsList.style.display = 'grid';
+    selectedTool = null;
+});
+
+document.getElementById('back-to-list-from-result-btn').addEventListener('click', () => {
+    toolForm.style.display = 'none';
+    resultContainer.style.display = 'none';
+    toolsList.style.display = 'grid';
+    selectedTool = null;
+});
+
+// Execute tool button
+document.getElementById('execute-tool-btn').addEventListener('click', executeTool);
+
+// Close modal handlers
+closeBtn.addEventListener('click', () => {
+    modal.classList.remove('show');
+    setTimeout(() => modal.style.display = 'none', 300);
+});
+
+window.addEventListener('click', (e) => {
+    if (e.target === modal) {
+        modal.classList.remove('show');
+        setTimeout(() => modal.style.display = 'none', 300);
+    }
+});
+
+// AI Agent Button Handler - Open MCP Modal
+document.getElementById('ai-agent-btn').addEventListener('click', openMCPModal);
