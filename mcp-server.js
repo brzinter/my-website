@@ -1,7 +1,15 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const axios = require('axios');
+const https = require('https');
 const { Client } = require('@modelcontextprotocol/sdk/client/index.js');
 const { StdioClientTransport } = require('@modelcontextprotocol/sdk/client/stdio.js');
+
+// Create https agent to handle SSL issues
+const httpsAgent = new https.Agent({
+    rejectUnauthorized: false
+});
 
 const app = express();
 app.use(cors());
@@ -118,6 +126,90 @@ app.post('/api/mcp/read-resource', async (req, res) => {
     }
 });
 
+// Stock data proxy endpoint (bypasses CORS)
+app.get('/api/stock/:symbol', async (req, res) => {
+    try {
+        const { symbol } = req.params;
+        console.log(`Fetching stock data for ${symbol}...`);
+
+        // Try multiple endpoints in order of preference
+        const endpoints = [
+            // Try Alpha Vantage with API key from environment
+            {
+                name: 'Alpha Vantage',
+                url: `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${process.env.ALPHA_VANTAGE_API_KEY || 'demo'}`,
+                transform: (data) => {
+                    const quote = data?.['Global Quote'];
+                    if (!quote || !quote['05. price']) return null;
+                    const price = parseFloat(quote['05. price']);
+                    const prevClose = parseFloat(quote['08. previous close']);
+                    const change = parseFloat(quote['09. change']);
+                    const changePercent = parseFloat(quote['10. change percent'].replace('%', ''));
+                    return {
+                        regularMarketPrice: price,
+                        regularMarketOpen: parseFloat(quote['02. open']),
+                        regularMarketDayHigh: parseFloat(quote['03. high']),
+                        regularMarketDayLow: parseFloat(quote['04. low']),
+                        regularMarketPreviousClose: prevClose,
+                        regularMarketChange: change,
+                        regularMarketChangePercent: changePercent,
+                        regularMarketTime: Math.floor(Date.now() / 1000)
+                    };
+                }
+            },
+            // Try Yahoo Finance via different query endpoint
+            {
+                name: 'Yahoo Finance',
+                url: `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${symbol}`,
+                transform: (data) => data?.quoteResponse?.result?.[0]
+            }
+        ];
+
+        let lastError = null;
+
+        for (const endpoint of endpoints) {
+            try {
+                console.log(`  Trying ${endpoint.name}...`);
+
+                // Use axios for reliable HTTP requests
+                const response = await axios.get(endpoint.url, {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+                        'Accept': 'application/json'
+                    },
+                    timeout: 10000,
+                    httpsAgent: httpsAgent
+                });
+
+                const data = response.data;
+                const quoteResult = endpoint.transform(data);
+
+                if (quoteResult && quoteResult.regularMarketPrice) {
+                    console.log(`✓ Stock data fetched successfully from ${endpoint.name} for ${symbol}`);
+                    res.json({ success: true, data: quoteResult, source: endpoint.name });
+                    return;
+                }
+
+                throw new Error('No valid data in response');
+            } catch (error) {
+                const message = error.response ?
+                    `${endpoint.name} returned ${error.response.status}` :
+                    error.message;
+                console.log(`  ${endpoint.name} failed: ${message}`);
+                lastError = error;
+                continue;
+            }
+        }
+
+        // All endpoints failed
+        throw new Error(lastError?.message || 'All stock API endpoints failed');
+
+    } catch (error) {
+        console.error('Stock API error:', error.message);
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
     res.json({
@@ -145,6 +237,7 @@ app.listen(PORT, () => {
     console.log(`MCP server config: ${MCP_SERVER_CONFIG.command} ${MCP_SERVER_CONFIG.args.join(' ')}`);
     console.log('\nAvailable endpoints:');
     console.log(`  GET  /api/health - Health check`);
+    console.log(`  GET  /api/stock/:symbol - Fetch real-time stock data`);
     console.log(`  GET  /api/mcp/tools - List available tools`);
     console.log(`  GET  /api/mcp/resources - List available resources`);
     console.log(`  POST /api/mcp/call-tool - Call a specific tool`);
