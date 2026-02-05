@@ -606,3 +606,71 @@ window.addEventListener('click', (e) => {
 
 // AI Agent Button Handler - Open MCP Modal
 document.getElementById('ai-agent-btn').addEventListener('click', openMCPModal);
+
+// ServiceNow MCP Button Handler
+document.getElementById('servicenow-mcp-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('servicenow-mcp-btn');
+    const originalText = btn.querySelector('.ai-text').textContent;
+
+    try {
+        btn.querySelector('.ai-text').textContent = 'Connecting...';
+        btn.disabled = true;
+
+        // Test connection to ServiceNow MCP
+        const response = await fetch(`${MCP_BACKEND_URL}/api/servicenow/connect`, {
+            method: 'POST'
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            btn.querySelector('.ai-text').textContent = 'Connected ✓';
+            btn.style.background = 'linear-gradient(135deg, #28a745 0%, #20c997 100%)';
+
+            // Open modal with ServiceNow tools
+            openServiceNowModal();
+        } else {
+            throw new Error(result.error || 'Connection failed');
+        }
+    } catch (error) {
+        console.error('ServiceNow connection error:', error);
+        btn.querySelector('.ai-text').textContent = 'Connection Failed';
+        btn.style.background = 'linear-gradient(135deg, #dc3545 0%, #c82333 100%)';
+        alert(`Failed to connect to ServiceNow MCP:\n${error.message}`);
+
+        // Reset button after 3 seconds
+        setTimeout(() => {
+            btn.querySelector('.ai-text').textContent = originalText;
+            btn.style.background = '';
+            btn.disabled = false;
+        }, 3000);
+    }
+});
+
+// Open modal with ServiceNow MCP tools
+async function openServiceNowModal() {
+    modal.classList.add('show');
+    modal.style.display = 'flex';
+
+    // Reset views
+    toolsList.style.display = 'grid';
+    toolForm.style.display = 'none';
+    resultContainer.style.display = 'none';
+
+    try {
+        // Load ServiceNow tools
+        const toolsResponse = await fetch(`${MCP_BACKEND_URL}/api/servicenow/tools`);
+        const toolsData = await toolsResponse.json();
+
+        if (!toolsData.success) {
+            throw new Error(toolsData.error || 'Failed to fetch ServiceNow tools');
+        }
+
+        currentTools = toolsData.tools;
+        displayToolsList(currentTools);
+
+    } catch (error) {
+        console.error('ServiceNow tools error:', error);
+        toolsList.innerHTML = `<div class="error">${error.message}</div>`;
+    }
+}

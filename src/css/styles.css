@@ -293,6 +293,22 @@ h1 {
     }
 }
 
+/* ServiceNow MCP Button - positioned below the FileSystem button */
+.servicenow-btn {
+    top: 85px;
+    background: linear-gradient(135deg, #0066cc 0%, #004499 100%);
+    box-shadow: 0 5px 20px rgba(0, 102, 204, 0.5);
+}
+
+.servicenow-btn:hover {
+    background: linear-gradient(135deg, #004499 0%, #0066cc 100%);
+    box-shadow: 0 8px 25px rgba(0, 102, 204, 0.7);
+}
+
+.servicenow-btn:active {
+    box-shadow: 0 3px 12px rgba(0, 102, 204, 0.5);
+}
+
 /* Responsive adjustments for AI button */
 @media (max-width: 768px) {
     .ai-agent-button {
@@ -300,6 +316,10 @@ h1 {
         right: 10px;
         padding: 11px 18px;
         font-size: 0.75em;
+    }
+
+    .servicenow-btn {
+        top: 60px;
     }
 
     .ai-text {
